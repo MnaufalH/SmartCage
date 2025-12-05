@@ -1,14 +1,9 @@
-import './bootstrap';
-
 document.addEventListener('DOMContentLoaded', () => {
     // Elements
     const espIpInput = document.getElementById('esp-ip');
     const connectBtn = document.getElementById('connect-btn');
     const statusDot = document.getElementById('status-indicator');
     const statusText = document.getElementById('status-text');
-
-    // Only run if elements exist (in case this JS is loaded elsewhere)
-    if (!espIpInput) return;
 
     const tempValue = document.getElementById('temp-value');
     const gasValue = document.getElementById('gas-value');
@@ -22,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const scheduleSelect = document.getElementById('schedule-select');
 
     let espIp = localStorage.getItem('esp_ip') || '192.168.1.100';
-    espIpInput.value = espIp;
+    if (espIpInput) espIpInput.value = espIp;
 
     let isAuto = true;
     let fetchInterval = null;
@@ -37,27 +32,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 1000);
 
     // Save IP
-    connectBtn.addEventListener('click', () => {
-        espIp = espIpInput.value;
-        localStorage.setItem('esp_ip', espIp);
-        startPolling();
-    });
+    if (connectBtn) {
+        connectBtn.addEventListener('click', () => {
+            espIp = espIpInput.value;
+            localStorage.setItem('esp_ip', espIp);
+            startPolling();
+        });
+    }
 
     // Toggle Mode
-    btnMode.addEventListener('change', async (e) => {
-        isAuto = e.target.checked;
-        modeLabel.textContent = isAuto ? 'AUTO' : 'MANUAL';
-        updateControlState();
+    if (btnMode) {
+        btnMode.addEventListener('change', async (e) => {
+            isAuto = e.target.checked;
+            modeLabel.textContent = isAuto ? 'AUTO' : 'MANUAL';
+            updateControlState();
 
-        try {
-            await fetch(`http://${espIp}/control?mode=${isAuto ? 'auto' : 'manual'}`, { method: 'POST' });
-        } catch (err) {
-            log('Error setting mode: ' + err);
-        }
-    });
+            try {
+                await fetch(`http://${espIp}/control?mode=${isAuto ? 'auto' : 'manual'}`, { method: 'POST' });
+            } catch (err) {
+                log('Error setting mode: ' + err);
+            }
+        });
+    }
 
     // Manual Controls
     const setupControl = (element, deviceName) => {
+        if (!element) return;
         element.addEventListener('change', async (e) => {
             if (isAuto && deviceName !== 'feeder') {
                 // disallowed in auto
@@ -82,6 +82,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateControlState() {
         const controls = [btnFeeder, btnWater, btnLamp];
+        if (!btnFeeder) return;
+
         if (isAuto) {
             controls.forEach(c => c.parentElement.parentElement.classList.add('disabled'));
         } else {
@@ -96,23 +98,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
 
             // Update Status
-            statusDot.classList.add('connected');
-            statusDot.classList.remove('disconnected');
-            statusText.textContent = 'Connected';
+            if (statusDot) {
+                statusDot.classList.add('connected');
+                statusDot.classList.remove('disconnected');
+                statusText.textContent = 'Connected';
+            }
 
             // Update Values
-            tempValue.textContent = data.temperature.toFixed(1);
-            gasValue.textContent = data.gas;
+            if (tempValue) tempValue.textContent = data.temperature.toFixed(1);
+            if (gasValue) gasValue.textContent = data.gas;
 
             if (isAuto) {
-                btnLamp.checked = data.relay_lampu;
-                btnWater.checked = data.relay_dinamo;
+                if (btnLamp) btnLamp.checked = data.relay_lampu;
+                if (btnWater) btnWater.checked = data.relay_dinamo;
             }
 
         } catch (err) {
-            statusDot.classList.remove('connected');
-            statusDot.classList.add('disconnected');
-            statusText.textContent = 'Disconnected';
+            if (statusDot) {
+                statusDot.classList.remove('connected');
+                statusDot.classList.add('disconnected');
+                statusText.textContent = 'Disconnected';
+            }
         }
     }
 
