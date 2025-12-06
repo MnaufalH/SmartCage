@@ -1,7 +1,12 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Models\SensorData; // Panggil Model
 
 Route::get('/', function () {
-    return view('dashboard.index');
+    // Ambil data terbaru dari database
+    $data = SensorData::latest()->first();
+    
+    // Tampilkan file 'dashboard.blade.php'
+    return view('dashboard', ['data' => $data]);
 });
