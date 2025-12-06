@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="5">
     <title>Smart Cage Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap" rel="stylesheet">
-    
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <link rel="stylesheet" href="{{ asset('css/dashboard.css') }}">
 </head>
 <body>
     <div class="background-globes">
@@ -43,7 +43,7 @@
                     <div class="card glass-panel">
                         <h3>Suhu</h3>
                         <div class="value-display">
-                            <span id="temp-value">--</span>
+                            <span id="temp-value">{{ $data->suhu ?? 0 }}</span>
                             <span class="unit">°C</span>
                         </div>
                     </div>
@@ -52,7 +52,7 @@
                     <div class="card glass-panel">
                         <h3>Gas Check</h3>
                         <div class="value-display">
-                            <span id="gas-value">--</span>
+                            <span id="gas-value">{{ $data->gas ?? 0 }}</span>
                             <span class="unit">PPM</span>
                         </div>
                     </div>
@@ -123,5 +123,7 @@
             </section>
         </div>
     </div>
+
+    <script src="{{ asset('js/dashboard.js') }}"></script>
 </body>
 </html>
