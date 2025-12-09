@@ -1,134 +1,122 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener("DOMContentLoaded", () => {
     // Elements
-    const espIpInput = document.getElementById('esp-ip');
-    const connectBtn = document.getElementById('connect-btn');
-    const statusDot = document.getElementById('status-indicator');
-    const statusText = document.getElementById('status-text');
+    const statusDot = document.getElementById("status-indicator"); // Opsional
+    const tempValue = document.querySelector(".temp-val"); // Sesuaikan class/id di blade kamu
+    const gasValue = document.querySelector(".gas-val"); // Sesuaikan class/id di blade kamu
 
-    const tempValue = document.getElementById('temp-value');
-    const gasValue = document.getElementById('gas-value');
-    const timeValue = document.getElementById('time-value');
-
-    const btnFeeder = document.getElementById('btn-feeder');
-    const btnWater = document.getElementById('btn-water');
-    const btnLamp = document.getElementById('btn-lamp');
-    const btnMode = document.getElementById('btn-mode');
-    const modeLabel = document.getElementById('mode-label');
-    const scheduleSelect = document.getElementById('schedule-select');
-
-    let espIp = localStorage.getItem('esp_ip') || '192.168.1.100';
-    if (espIpInput) espIpInput.value = espIp;
+    // Tombol Kontrol
+    const btnFeeder = document.getElementById("btn-feeder"); // Pastikan ID ini ada di Blade
+    const btnWater = document.getElementById("btn-water"); // Toggle Minum
+    const btnLamp = document.getElementById("btn-lamp"); // Toggle Lampu
+    const btnMode = document.getElementById("btn-mode"); // Toggle Mode Auto/Manual
+    const modeLabel = document.getElementById("mode-label");
 
     let isAuto = true;
-    let fetchInterval = null;
 
-    // Helper to log
-    const log = (msg) => console.log(`[SmartCage] ${msg}`);
-
-    // Update Time
-    setInterval(() => {
-        const now = new Date();
-        timeValue.textContent = now.toLocaleTimeString('en-US', { hour12: true });
-    }, 1000);
-
-    // Save IP
-    if (connectBtn) {
-        connectBtn.addEventListener('click', () => {
-            espIp = espIpInput.value;
-            localStorage.setItem('esp_ip', espIp);
-            startPolling();
-        });
+    // --- FUNGSI 1: KIRIM PERINTAH KE DATABASE ---
+    async function sendCommand(data) {
+        try {
+            await fetch("/api/control/update", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(data),
+            });
+            console.log("Perintah dikirim:", data);
+        } catch (err) {
+            console.error("Gagal update database:", err);
+        }
     }
 
-    // Toggle Mode
+    // --- EVENT LISTENER TOMBOL ---
+
+    // 1. Mode Switch (Auto/Manual)
     if (btnMode) {
-        btnMode.addEventListener('change', async (e) => {
+        btnMode.addEventListener("change", (e) => {
             isAuto = e.target.checked;
-            modeLabel.textContent = isAuto ? 'AUTO' : 'MANUAL';
-            updateControlState();
+            modeLabel.textContent = isAuto ? "AUTO" : "MANUAL";
+            updateDisabledState(); // Matikan tombol jika Auto
 
-            try {
-                await fetch(`http://${espIp}/control?mode=${isAuto ? 'auto' : 'manual'}`, { method: 'POST' });
-            } catch (err) {
-                log('Error setting mode: ' + err);
-            }
+            // Kirim ke DB
+            sendCommand({ mode: isAuto ? "AUTO" : "MANUAL" });
         });
     }
 
-    // Manual Controls
-    const setupControl = (element, deviceName) => {
+    // 2. Lampu & Minum (Toggle)
+    const setupToggle = (element, dbField) => {
         if (!element) return;
-        element.addEventListener('change', async (e) => {
-            if (isAuto && deviceName !== 'feeder') {
-                // disallowed in auto
-            }
-
-            const state = e.target.checked ? 'on' : 'off';
-            try {
-                if (deviceName === 'feeder') {
-                    setTimeout(() => { element.checked = false; }, 2500);
-                }
-
-                await fetch(`http://${espIp}/control?device=${deviceName}&state=${state}`, { method: 'POST' });
-            } catch (err) {
-                log(`Error controlling ${deviceName}: ` + err);
-            }
+        element.addEventListener("change", (e) => {
+            const val = e.target.checked ? 1 : 0;
+            sendCommand({ [dbField]: val }); // Kirim {lampu: 1} atau {minum: 0}
         });
     };
 
-    setupControl(btnFeeder, 'feeder');
-    setupControl(btnLamp, 'lampu');
-    setupControl(btnWater, 'dinamo');
+    setupToggle(btnLamp, "lampu");
+    setupToggle(btnWater, "minum");
 
-    function updateControlState() {
-        const controls = [btnFeeder, btnWater, btnLamp];
-        if (!btnFeeder) return;
+    // 3. Pakan (Servo) - Cuma aktif sebentar
+    if (btnFeeder) {
+        btnFeeder.addEventListener("click", () => {
+            // Pakai click bukan change untuk tombol tekan
+            console.log("Memberi pakan...");
+            sendCommand({ pakan: 1 });
 
-        if (isAuto) {
-            controls.forEach(c => c.parentElement.parentElement.classList.add('disabled'));
-        } else {
-            controls.forEach(c => c.parentElement.parentElement.classList.remove('disabled'));
-        }
+            // Visual feedback (tombol ditekan)
+            btnFeeder.disabled = true;
+            setTimeout(() => {
+                btnFeeder.disabled = false;
+            }, 2000);
+        });
     }
 
+    // --- FUNGSI 2: DISABLE TOMBOL KALAU AUTO ---
+    function updateDisabledState() {
+        const controls = [btnWater, btnLamp, btnFeeder];
+        controls.forEach((btn) => {
+            if (btn) btn.disabled = isAuto; // Kalau Auto, tombol mati
+        });
+    }
+
+    // --- FUNGSI 3: AMBIL DATA SENSOR & STATUS DARI DB ---
     async function fetchData() {
         try {
-            const res = await fetch(`http://${espIp}/data`, { signal: AbortSignal.timeout(2000) });
-            if (!res.ok) throw new Error('Failed');
-            const data = await res.json();
+            // Kita pakai endpoint sensor yang lama untuk data suhu
+            // Dan endpoint control baru untuk status tombol (sinkronisasi)
 
-            // Update Status
-            if (statusDot) {
-                statusDot.classList.add('connected');
-                statusDot.classList.remove('disconnected');
-                statusText.textContent = 'Connected';
+            // 1. Ambil Data Sensor Terakhir (dari tabel sensor_data)
+            // (Asumsi kamu punya route ini dari codingan sebelumnya)
+            // const resSensor = await fetch('/');
+            // Kita skip dulu update suhu via JS, biar blade yang handle refresh (meta refresh)
+            // ATAU kalau mau AJAX: fetch('/api/sensor/latest')...
+
+            // 2. Ambil Status Kontrol (Supaya kalau direfresh tombol gak reset)
+            const resControl = await fetch("/api/control/status");
+            const ctrl = await resControl.json();
+
+            if (ctrl) {
+                // Sinkronisasi posisi tombol dengan Database
+                if (btnMode) {
+                    const dbAuto = ctrl.mode === "AUTO";
+                    if (isAuto !== dbAuto) {
+                        // Update hanya jika beda
+                        isAuto = dbAuto;
+                        btnMode.checked = isAuto;
+                        modeLabel.textContent = isAuto ? "AUTO" : "MANUAL";
+                        updateDisabledState();
+                    }
+                }
+
+                // Update tombol hanya jika Mode Manual (biar user liat status asli)
+                // Atau update terus agar user tau apa yang terjadi di Auto
+                if (btnLamp) btnLamp.checked = ctrl.lampu == 1;
+                if (btnWater) btnWater.checked = ctrl.minum == 1;
             }
-
-            // Update Values
-            if (tempValue) tempValue.textContent = data.temperature.toFixed(1);
-            if (gasValue) gasValue.textContent = data.gas;
-
-            if (isAuto) {
-                if (btnLamp) btnLamp.checked = data.relay_lampu;
-                if (btnWater) btnWater.checked = data.relay_dinamo;
-            }
-
         } catch (err) {
-            if (statusDot) {
-                statusDot.classList.remove('connected');
-                statusDot.classList.add('disconnected');
-                statusText.textContent = 'Disconnected';
-            }
+            console.error("Gagal sync data:", err);
         }
     }
 
-    function startPolling() {
-        if (fetchInterval) clearInterval(fetchInterval);
-        fetchData(); // Immediate
-        fetchInterval = setInterval(fetchData, 2000);
-    }
-
-    // Initialize
-    updateControlState();
-    startPolling();
+    // Polling setiap 2 detik untuk sync status
+    setInterval(fetchData, 2000);
 });
